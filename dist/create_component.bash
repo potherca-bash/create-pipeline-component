@@ -25,152 +25,157 @@ set -o errexit -o errtrace -o nounset -o pipefail
 #/     create_component ./xmllint 'XML Lint'
 #/===============================================================================
 
-# Displays all lines in main script that start with '##'
-usage() {
-  grep '^#/' < "$0" | cut -c4-
-}
-
 run() {
-  if [[ $# -lt 1 ]]; then
-    echo "$(basename "$0") <target-path> <package-name> [source-repo]"
-    echo
-    echo "Call $(basename "$0") --help for more details"
-    exit 1
-  fi
 
-  for sOption in "${@}"; do
-    case "${sOption}" in
-      -h | --help)
-        usage
-        return 0
-        ;;
-    esac
-  done
+    # Emoji Commit Legend
+    #
+    # | Commit              | Emoji  |                         |
+    # | ------------------- | -----: | :---------------------: |
+    # | Documentation       |     📚 | :books:                 |
+    # | Configuration files |     🔧 | :wrench:                |
+    # | CI build system     |     👷 | :construction_worker:   |
+    # | Funding related     |     💰 | :moneybag:              |
+    #
+    # Source: https://gist.github.com/parmentf/035de27d6ed1dce0b36a
+    commitChanges() {
+        local sTargetPath
 
-  local sPackageName sSourceRepo sRepoName sTargetPath
+        readonly sTargetPath="${1?One parameter required: <target-path>}"
 
-  readonly sTargetPath="${1?Two parameters required: <target-path> <package-name> [source-repo]}"
-  readonly sPackageName="${2?Two parameters required: <target-path> <package-name> [source-repo]}"
-  readonly sSourceRepo="${3:-git@gitlab.com:pipeline-components/org/skeleton.git}"
+        git -C "${sTargetPath}" commit --allow-empty --message '🎉'
 
-  readonly sRepoName="$(basename "${sTargetPath}")"
+        git -C "${sTargetPath}" add .gitignore app/.gitkeep
+        git -C "${sTargetPath}" commit --message "🔧 Add git ignore"
 
-  # Emoji Commit Legend
-  #
-  # | Commit              | Emoji  |                         |
-  # | ------------------- | -----: | :---------------------: |
-  # | Documentation       |     📚 | :books:                 |
-  # | Configuration files |     🔧 | :wrench:                |
-  # | CI build system     |     👷 | :construction_worker:   |
-  # | Funding related     |     💰 | :moneybag:              |
-  #
-  # Source: https://gist.github.com/parmentf/035de27d6ed1dce0b36a
-  commitChanges() {
-    log 'Committing changes'
+        git -C "${sTargetPath}" add LICENSE
+        git -C "${sTargetPath}" commit --message "📚 Add Licence"
 
-    git_dir "${sTargetPath}" commit --allow-empty --message '🎉'
+        git -C "${sTargetPath}" add .gitlab-ci.yml .mdlrc .yamllint renovate.json
+        git -C "${sTargetPath}" commit --message "👷 Add build system"
 
-    git_dir "${sTargetPath}" add .gitignore app/.gitkeep
-    git_dir "${sTargetPath}" commit --message "🔧 Add git ignore"
+        git -C "${sTargetPath}" add .github/FUNDING.yml
+        git -C "${sTargetPath}" commit --message "💰 Add funding configuration"
 
-    git_dir "${sTargetPath}" add LICENSE
-    git_dir "${sTargetPath}" commit --message "📚 Add Licence"
+        git -C "${sTargetPath}" add action.yml
+        git -C "${sTargetPath}" commit --message "💰 Add funding configuration"
+    }
 
-    git_dir "${sTargetPath}" add .gitlab-ci.yml .mdlrc .yamllint renovate.json
-    git_dir "${sTargetPath}" commit --message "👷 Add build system"
+    createLocalRepo() {
+        local sRepoName sTargetPath
 
-    git_dir "${sTargetPath}" add .github/FUNDING.yml
-    git_dir "${sTargetPath}" commit --message "💰 Add funding configuration"
+        readonly sTargetPath="${1?Two parameters required: <target-path> <repository-name>}"
+        readonly sRepoName="${1?Two parameters required: <target-path> <repository-name>}"
 
-    git_dir "${sTargetPath}" add action.yml
-    git_dir "${sTargetPath}" commit --message "💰 Add funding configuration"
-  }
+        git -C "${sTargetPath}" init
+        git -C "${sTargetPath}" remote add origin "git@gitlab.com:pipeline-components/${sRepoName}.git"
+    }
 
-  createLocalRepo() {
-    log 'Creating local repository'
+    fetchSourceCode() {
+        local sSourceRepo sTargetPath
 
-    git_dir "${sTargetPath}" init
-    git_dir "${sTargetPath}" remote add origin "git@gitlab.com:pipeline-components/${sRepoName}.git"
-  }
+        readonly sTargetPath="${1?Two parameters required: <target-path> <repository-name>}"
+        readonly sSourceRepo="${1?Two parameters required: <target-path> <source-repository>}"
 
-  fetchSourceCode() {
-    log 'Fetching source code'
+        git clone "${sSourceRepo}" "${sTargetPath}"
 
-    git clone "${sSourceRepo}" "${sTargetPath}"
+        rm -rdf "${sTargetPath}/.git"
+    }
 
-    rm -rdf "${sTargetPath}/.git"
-  }
+    log() {
+        echo -e "\n =====> ${*}"
+    }
 
-  git_dir() {
-    local -a aParameters=(
-      "--work-tree=${1}"
-      "--git-dir=${1}/.git"
-    )
+    messageUser() {
+        local aEditFiles sFile sTargetPath
 
-    shift
+        readonly sTargetPath="${1?One parameter required: <target-path>}"
 
-    aParameters=("${aParameters[@]}" "${@}")
+        readonly -a aEditFiles=(
+            '.github/workflows/release.yml'
+            'Dockerfile'
+            'README.md'
+        )
 
-    git "${aParameters[@]}"
-  }
+        echo "Please edit the following files:"
 
-  log () {
-    echo -e "\n =====> ${*}"
-  }
+        for sFile in "${aEditFiles[@]}"; do
+            echo -e "\t- ${sTargetPath}/${sFile}"
+        done
 
-  messageUser() {
-    local aEditFiles sFile
+        echo "and git commit & push them when you are satisfied with your changes."
+    }
 
-    log 'Done'
+    # If the remote repo does not exist, GitLab will create the repo
+    pushChanges() {
+        local sTargetPath
 
-    readonly -a aEditFiles=(
-      '.github/workflows/release.yml'
-      'Dockerfile'
-      'README.md'
-    )
+        readonly sTargetPath="${1?One parameter required: <target-path>}"
 
-    echo "Please edit the following files:"
+        git -C "${sTargetPath}" push --set-upstream origin master
+    }
 
-    for sFile in "${aEditFiles[@]}"; do
-      echo -e "\t- ${sTargetPath}/${sFile}"
+    replaceMarkers() {
+        local sPackageName sRepoName sTargetPath
+
+        readonly sTargetPath="${1?Three parameters required: <target-path> <repository-name> <package-name>}"
+        readonly sRepoName="${2?Three parameters required: <target-path> <repository-name> <package-name>}"
+        readonly sPackageName="${3?Three parameters required: <target-path> <repository-name> <package-name>}"
+
+        sed -i \
+            -e "s/_Template_/${sPackageName}/g" \
+            -e "s/_template_/${sRepoName}/g" \
+            "${sTargetPath}/action.yml" \
+            "${sTargetPath}/Dockerfile" \
+            "${sTargetPath}/README.md"
+
+        sed -i -e "s/2021/$(date +%Y)/g" "${sTargetPath}/LICENSE" "${sTargetPath}/README.md"
+    }
+
+    # Displays all lines in main script that start with '##'
+    usage() {
+        grep '^#/' <"$0" | cut -c4-
+    }
+
+    if [[ $# -lt 1 ]]; then
+        echo "$(basename "$0") <target-path> <package-name> [source-repo]"
+        echo
+        echo "Call $(basename "$0") --help for more details"
+        exit 1
+    fi
+
+    for sOption in "${@}"; do
+        case "${sOption}" in
+            -h | --help)
+                usage
+                return 0
+                ;;
+        esac
     done
 
-    echo "and git commit & push them when you are satisfied with your changes."
-  }
+    local sPackageName sSourceRepo sRepoName sTargetPath
 
-  # If the remote repo does not exist, GitLab will create the repo
-  pushChanges() {
-    log 'Pushing changes'
+    readonly sTargetPath="${1?Two parameters required: <target-path> <package-name> [source-repo]}"
+    readonly sPackageName="${2?Two parameters required: <target-path> <package-name> [source-repo]}"
+    readonly sSourceRepo="${3:-git@gitlab.com:pipeline-components/org/skeleton.git}"
 
-    git_dir "${sTargetPath}" push --set-upstream origin master
-  }
+    readonly sRepoName="$(basename "${sTargetPath}")"
 
-  replaceMarkers() {
+    log 'Fetching source code'
+    fetchSourceCode "${sTargetPath}" "${sSourceRepo}"
     log 'Replacing markers'
-
-    sed -i \
-      -e "s/_Template_/${sPackageName}/g" \
-      -e "s/_template_/${sRepoName}/g" \
-      "${sTargetPath}/action.yml" \
-      "${sTargetPath}/Dockerfile" \
-      "${sTargetPath}/README.md"
-
-    sed -i -e "s/2020/$(date +%Y)/g" "${sTargetPath}/LICENSE" "${sTargetPath}/README.md"
-  }
-
-  #  if [[ $(git reflog | wc -l) -eq 1 ]] ; then
-  #  fi
-
-  fetchSourceCode
-  replaceMarkers
-  createLocalRepo
-  commitChanges
-  pushChanges
-  messageUser
+    replaceMarkers "${sTargetPath}" "${sRepoName}" "${sPackageName}"
+    log 'Creating local repository'
+    createLocalRepo "${sTargetPath}" "${sRepoName}"
+    log 'Committing changes'
+    commitChanges "${sTargetPath}"
+    log 'Pushing changes'
+    pushChanges "${sTargetPath}"
+    log 'Done.'
+    messageUser "${sTargetPath}"
 }
 
 if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
-  export -f run
+    export -f run
 else
-  run "${@}"
+    run "${@}"
 fi
